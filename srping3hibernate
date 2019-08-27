@@ -1,0 +1,78 @@
+node('master')
+{
+    stage('ContinuousDownload') 
+    {
+        git 'https://github.com/opstree/spring3hibernate.git'
+    }
+    stage('ContnuousBuild')
+    {
+        sh label: '', script: 'mvn package'
+	}
+    stage('JUnit reports')
+    {
+        junit '**/target/surefire-reports/*.xml'
+		// Install Junit plugin in jenkins 
+    }
+    stage('cobertura')
+    {
+        cobertura autoUpdateHealth: false, coberturaReportFile: '**/target/site/cobertura/coverage.xml', conditionalCoverageTargets: '70, 0, 0', failUnhealthy: false, lineCoverageTargets: '80, 0, 0', maxNumberOfBuilds: 0, methodCoverageTargets: '80, 0, 0', onlyStable: false, sourceEncoding: 'ASCII'
+        // Install cobertula plugin in jenkins 
+	}
+    stage('FindBugs')
+    {
+        findbugs canComputeNew: false, defaultEncoding: '', excludePattern: '', healthy: '', includePattern: '', pattern: '**/target/findbugs/*.xml', unHealthy: ''
+        // Install findbugs plugin in jenkins 
+	}
+    stage('slackNotify')
+    {
+        slackSend baseUrl: 'https://opstree.slack.com/services/hooks/jenkins-ci/', channel: '#mychannel', color: 'good', message: 'build success', tokenCredentialId: 'opst'
+        // Install slack notify plugin in jenkins 
+	}
+    stage('Binding aws creds')
+    {
+        withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: 'aws', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
+        // install cloubees credentials plugin in jenkins    
+			sh '''
+            sudo apt-get update 
+            sudo apt-get install python awscli python-pip -y
+
+			/*---launch tomcat instance from jenkins using awscli---*/
+            aws ec2 run-instances --image-id ami-07eaf8df76be0c442 --count 1 --instance-type t2.micro --key-name cent --security-group-ids default --region ap-south-1 --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=tomcat}]'
+        '''
+        }
+    }
+	stage ("wait for server") 
+	{
+        echo 'Waiting 5 minutes for deployment to complete prior starting smoke testing'
+        sleep 150 // seconds
+    }
+	stage('final deploying')
+	{
+        //deploy the artifact to webapps directory     	
+	    pip install --upgrade --user awscli
+		def pub = sh (script: 'aws ec2 describe-instances --filters Name=tag:Name,Values="tomcat" --query "Reservations[*].Instances[*].PublicIpAddress"  --output=text', returnStdout: true).trim()
+
+		// public ip of tomcat  
+		echo "${pub}"
+
+		/*---------make sure store your pem file in tmp dir------------*/
+		sh label: '', script: 'scp -i /tmp/tomcat **/target/*.war  ubuntu@"${pub}":/opt/bitnami/apache-tomcat/webapps'
+	}
+}
+
+
+
+
+
+
+
+# check the private ip address of the instance, check only if tag name is matching. 
+aws ec2 describe-instances --filters Name=tag:Name,Values="tomcat" --query 'Reservations[].Instances[].NetworkInterfaces[].PrivateIpAddresses[].PrivateIpAddress' --output text
+
+
+# check the public ip address of the instance, check only if tag name is matching.
+aws ec2 describe-instances --filters Name=tag:Name,Values="tomcat" --query "Reservations[*].Instances[*].PublicIpAddress"  --output=text
+
+
+
+
