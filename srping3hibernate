@@ -26,12 +26,12 @@ node('master')
     stage('slackNotify')
     {
         slackSend baseUrl: 'https://opstree.slack.com/services/hooks/jenkins-ci/', channel: '#mychannel', color: 'good', message: 'build success', tokenCredentialId: 'opst'
-        // Install slack notify plugin in jenkins 
+        // Install slack notify plugin in jenkins  
     }
     stage('Binding aws creds')
     {
         withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: 'aws', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
-        // install cloubees credentials plugin in jenkins    
+        // install cloubees credentials plugin in jenkins and configure it correctly   
 	    sh '''
             sudo apt-get update 
             sudo apt-get install python awscli python-pip -y
